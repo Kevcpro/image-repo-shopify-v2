@@ -7,11 +7,6 @@ const USER = require("../models/userModel");
 const multer = require("multer");
 var AWS = require("aws-sdk");
 
-// Multer ships with storage engines DiskStorage and MemoryStorage
-//  And Multer adds a body object and a file or files object to the request object. 
-//  The body object contains the values of the text fields of the form, the file or 
-//  files object contains the files uploaded via the form.
-
 var storage = multer.memoryStorage();
 var upload = multer({ storage: storage });
 
@@ -20,30 +15,12 @@ var upload = multer({ storage: storage });
 // Implement pagination using cursor
 
 router.route("/").get((req, res, next) => {
-    DOCUMENT.find(
-        {},
-        null,
-        {
-            sort: { createdAt: 1 }
-        },
-        (err, docs) => {
-            if (err) {
-                return next(err);
-            }
-            res.status(200).send(docs);
-        }
-    );
-});
-
-// Route to get a single existing GO data (needed for the Edit functionality)
-
-router.route("/:id").get((req, res, next) => {
-    DOCUMENT.findById(req.params.id, (err, go) => {
+    IMAGE.find({}, (err, imageList) => {
         if (err) {
             return next(err);
         }
-        res.json(go);
-    });
+        res.status(200).send(imageList);
+    })
 });
 
 // Route to upload a single image
@@ -68,38 +45,47 @@ router.post("/upload", upload.single("file"), function (req, res) {
         ACL: "public-read"
     };
 
-    s3bucket.upload(params, function (err, data) {
+    s3bucket.upload(params, async function (err, data) {
         if (err) {
             res.status(500).json({ error: true, Message: err });
         } else {
             res.send({ data });
             var newFileUploaded = {
-                description: req.body.description,
+                user_id: req.body.userId[0],
+                price: req.body.price[0],
+                amountAvailable: req.body.amountAvailable[0],
+                permissions: req.body.privacy[0],
                 fileLink: s3FileURL + file.originalname,
                 s3_key: params.Key,
             };
-            var image = new IMAGE(newFileUploaded);
-            image.save(function (error, newFile) {
+
+            var image = await new IMAGE(newFileUploaded);
+            await image.save(function (error, newImage) {
                 if (error) {
                     throw error;
                 }
             });
+
+            var user = await USER.findOneAndUpdate({ "user_id": req.body.userId[0] },
+                { "$push": { "imageCollection": image.image_id } });
         }
     });
+
 });
 
-// Route to edit existing record's description field
-// Here, I am updating only the description in this mongo record. Hence using the "$set" parameter
-router.route("/edit/:id").put((req, res, next) => {
-    DOCUMENT.findByIdAndUpdate(
+// Route to update the available amount for an image
+// Requires: Id of the image to exist
+
+router.route("/updateInventory/:id").put((req, res, next) => {
+    IMAGE.findByIdAndUpdate(
         req.params.id,
-        { $set: { description: Object.keys(req.body)[0] } },
+        { $inc: { amountAvailable: -1 } },
         { new: true },
-        (err, updateDoc) => {
+        (err) => {
             if (err) {
                 return next(err);
             }
-            res.status(200).send(updateDoc);
+            res.status(200).send();
         }
     );
 });
@@ -108,7 +94,7 @@ router.route("/edit/:id").put((req, res, next) => {
 // Requires: id of a valid image in the s3 bucket
 
 router.route("/:id").delete((req, res, next) => {
-    DOCUMENT.findByIdAndRemove(req.params.id, (err, result) => {
+    IMAGE.findByIdAndRemove(req.params.id, (err, result) => {
         if (err) {
             return next(err);
         }
@@ -137,5 +123,38 @@ router.route("/:id").delete((req, res, next) => {
         });
     });
 });
+
+// Route to buy image by Id
+// Requires: A valid image Id and the amountAvailable 
+
+router.route("/buy").put(async (req, res, next) => {
+    console.log("THIS IS THE " + req.body.image_id);
+    const image = await IMAGE.findOne({ "image_id": req.body.image_id });
+    if (image.amountAvailable > 0) {
+        USER.findOneAndUpdate(
+            { "user_id": image.user_id },
+            { "$inc": { balance: image.price } },
+            { new: true },
+            (err, user) => {
+                if (err) {
+                    console.log(err);
+                }
+            }
+        ).then(() => {
+            IMAGE.findOneAndUpdate({ "image_id": req.body.image_id }, { "$inc": { amountAvailable: -1 } },
+                { new: true },
+                (err, user) => {
+                    if (err) {
+                        console.log(err);
+                    }
+                });
+            res.status(200).send();
+        })
+    }
+    else {
+        res.status(204).send();
+    }
+});
+
 
 module.exports = router;

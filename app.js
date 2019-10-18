@@ -3,11 +3,13 @@ const express = require("express");
 const path = require("path");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const fileUploadRoutes = require("./routes/fileUploadRoutes");
+const imageRoute = require("./routes/imageRoute");
+const userRoute = require("./routes/userRoute");
 const app = express();
 const config = require("./config/config");
 
 app.use(cors());
+
 config.connectDB();
 
 app.use(bodyParser.json());
@@ -15,7 +17,8 @@ app.use(bodyParser.urlencoded({ extended: "false" }));
 
 app.use(express.static(path.join(__dirname, "build")));
 
-app.use("/api/image", fileUploadRoutes);
+app.use("/api/image", imageRoute);
+app.use("/api/user", userRoute);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
@@ -33,7 +36,7 @@ app.use(function (err, req, res, next) {
   // render the error page
   res.status(err.status || 500);
   res.status(err.status || 500);
-  res.render("error");
+  res.send(err);
 });
 
 module.exports = app;
