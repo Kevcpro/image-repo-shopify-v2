@@ -128,7 +128,6 @@ router.route("/:id").delete((req, res, next) => {
 // Requires: A valid image Id and the amountAvailable 
 
 router.route("/buy").put(async (req, res, next) => {
-    console.log("THIS IS THE " + req.body.image_id);
     const image = await IMAGE.findOne({ "image_id": req.body.image_id });
     if (image.amountAvailable > 0) {
         USER.findOneAndUpdate(
